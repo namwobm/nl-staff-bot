@@ -1,10 +1,15 @@
 import express from "express";
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import cors from "cors";
 
 dotenv.config();
 
 const app = express();
+
+// ✅ Enable CORS so your GoDaddy site can call this API
+app.use(cors());
+
 app.use(express.json());
 
 const openai = new OpenAI({

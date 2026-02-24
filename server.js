@@ -6,68 +6,86 @@ import cors from "cors";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// 🔒 Allowed website origins (your staff portal)
+const allowedOrigins = [
+  "https://newleafnorth.com",
+  "https://www.newleafnorth.com",
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("CORS blocked"), false);
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type"],
+  })
+);
+
 app.use(express.json());
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Staff password from environment variable
 const STAFF_PASSWORD = process.env.STAFF_PASSWORD;
 
-// Optional: set to "strict" in Render if you want to toggle later
-const POLICY_MODE = process.env.POLICY_MODE || "strict"; // strict | normal
+// Health check
+app.get("/", (req, res) => {
+  res.send("New Leaf Staff Bot Running");
+});
 
+// Chat endpoint
 app.post("/chat", async (req, res) => {
   const { message, password } = req.body;
+
+  if (!STAFF_PASSWORD) {
+    return res.status(500).json({ error: "Server missing STAFF_PASSWORD" });
+  }
 
   if (password !== STAFF_PASSWORD) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
+  if (!message) {
+    return res.status(400).json({ error: "Missing message" });
+  }
+
   try {
-    const instructions = `
-You are the New Leaf Staff AI Assistant for New Leaf Autism & ABA (internal use only).
-
-CRITICAL RULES:
-1) POLICY-ONLY ANSWERS (STRICT MODE):
-   - If POLICY_MODE is "strict", you must answer ONLY using New Leaf internal policies/procedures that are explicitly provided to you in the conversation context.
-   - If you cannot confirm the answer is in New Leaf internal policies/procedures, say:
-     "I don’t have that information in our internal policies that I can reference right now. Please check the handbook/SOP or ask leadership."
-   - Do NOT guess. Do NOT fill gaps. Do NOT use general HR norms as if they are New Leaf policy.
-
-2) PRIVACY:
-   - Do not request or accept client names, PHI, or sensitive personal information.
-   - If user includes that info, tell them to remove it and ask a general question instead.
-
-3) TONE:
-   - Helpful, calm, practical. Not legal advice. Encourage checking the handbook/SOP or contacting leadership when needed.
-
-OUTPUT FORMAT:
-- Keep answers short and actionable.
-- If you are uncertain or policy is not available: use the exact refusal line above.
-
-POLICY_MODE: ${POLICY_MODE}
-`;
-
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
       input: message,
-      instructions,
-      // Keep responses steady (less "creative")
-      temperature: 0.2,
+      tools: [
+        {
+          type: "file_search",
+          vector_store_ids: [
+            "vs_699d1be108048191984c02f4fb985c56"
+          ],
+        },
+      ],
+      instructions: `
+You are the New Leaf Staff AI Assistant.
+
+Answer strictly using the New Leaf Employee Handbook and HR SOP manual.
+
+If the information is not found in those documents, say:
+"I don’t see that in our current handbook/SOP. Please check with leadership."
+
+Do not request or accept personal health information.
+Keep responses clear, practical, and workplace appropriate.
+      `.trim(),
     });
 
     res.json({ reply: response.output_text });
   } catch (error) {
-    console.error("Chat error:", error);
+    console.error("OpenAI error:", error);
     res.status(500).json({ error: "Something went wrong." });
   }
-});
-
-app.get("/", (req, res) => {
-  res.send("New Leaf Staff Bot Running");
 });
 
 const PORT = process.env.PORT || 3000;

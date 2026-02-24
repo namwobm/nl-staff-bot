@@ -1,10 +1,14 @@
 {
   "name": "nl-staff-bot",
   "version": "1.0.0",
+  "description": "New Leaf Staff AI Assistant - Vector Powered",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "dependencies": {
     "cors": "^2.8.5",
